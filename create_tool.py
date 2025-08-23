@@ -1,30 +1,44 @@
-import os, json, requests
+# create_tool.py — Vapi /tool using schema-style payload (no headers/body)
+import os, json, requests, sys
 from dotenv import load_dotenv
 
 load_dotenv()
-API_KEY = os.getenv("VAPI_API_KEY")
-BASE = os.getenv("PUBLIC_BASE_URL")
+API = "https://api.vapi.ai"
+KEY = os.getenv("VAPI_API_KEY")
+BASE = (os.getenv("PUBLIC_BASE_URL") or "").strip()
 
-headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+if not KEY:
+    sys.exit("Missing VAPI_API_KEY in .env")
+if not BASE or not BASE.startswith("https://"):
+    sys.exit("PUBLIC_BASE_URL must be your https ngrok URL (no spaces)")
+
+url = f"{BASE.rstrip('/')}/verify-and-notify"
 
 payload = {
-  "type": "function",
-  "function": {
-    "name": "check_status",
-    "description": "Look up PO shipping status and ETA",
-    "parameters": {
-      "type": "object",
-      "properties": {
-        "po_id": {"type": "string"},
-        "carrier": {"type": "string"}
-      },
-      "required": ["po_id"]
+    "name": "verify_and_notify",
+    "description": "Verify by account_id OR (full_name + dob) and send refund email.",
+    "url": url,
+    "method": "POST",
+    # IMPORTANT: use schema, not headers/body
+    "schema": {
+        "type": "object",
+        "properties": {
+            "account_id": {"type": "string", "description": "If provided, prefer this for verification"},
+            "full_name":  {"type": "string", "description": "Full name for name+DOB verification"},
+            "dob":        {"type": "string", "description": "YYYY-MM-DD for name+DOB verification"}
+        }
+        # no "required" ⇒ allows either path
     }
-  },
-  "server": {
-    "url": f"{BASE}/tool/check_status"
-  }
 }
 
-r = requests.post("https://api.vapi.ai/tool", headers=headers, data=json.dumps(payload), timeout=30)
-print(r.status_code, r.text)
+resp = requests.post(
+    f"{API}/tool",
+    headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
+    data=json.dumps(payload),
+    timeout=30
+)
+
+print(resp.status_code, resp.text)
+resp.raise_for_status()
+tool_id = resp.json().get("id")
+print("TOOL_ID:", tool_id)
